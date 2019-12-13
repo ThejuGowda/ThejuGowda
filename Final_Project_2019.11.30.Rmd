@@ -1,0 +1,358 @@
+---
+title: 'Final Project - Bank Marketing Dataset'
+author: "Project Group 6 - Nalini Kethineni, Theju Chikkathamme Gowda, Mahir Chowdhury and Rajpal Virk"
+date: "30/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install and Load Libraries
+
+```{r , echo=FALSE}
+# Install Libraries
+#install.packages("rpart.plot")
+#install.packages("rattle",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("randomForest", repos="http://R-Forge.R-project.org")
+#install.packages("caTools",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("descr",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("psych",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("C50",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("gmodels",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("mlbench",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("Metrics",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("descr",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+#install.packages("klaR",  dependencies=TRUE, repos='http://cran.rstudio.com/')
+
+
+# Load Libraries
+library(ggplot2)
+library(caret)
+library(e1071)
+library(rpart)
+library(rpart.plot)
+library(gmodels) 
+library(rattle)
+library(randomForest)
+library(caTools)
+library(descr)
+library(psych)
+library(C50)
+library(klaR)
+library(descr)
+library(Metrics)
+library(mlbench)
+library(gmodels) 
+library (MASS)
+library(gmodels) # For Cross Tables
+library(corrplot) 
+library(lattice)
+```
+
+## 1. Introduction to Dataset
+The data is related with direct marketing campaigns of a Portuguese banking institution. The marketing campaigns were based on phone calls. Clients were contacted by the bank to market its new product - Term Deposit. Data was then recorded by the bank on the contacted clients and whether the client subscribed to its new product.
+
+#### 1.1 Attribute Information
+
+1.1.1 Input variables \
+
+Bank client data: \
+1 - age (numeric) \
+2 - job : type of job (categorical: 'admin.','blue-collar','entrepreneur','housemaid','management','retired','self-employed','services','student','technician','unemployed','unknown') \
+3 - marital : marital status (categorical: 'divorced','married','single','unknown'; note: 'divorced' means divorced or widowed) \
+4 - education (categorical: 'basic.4y','basic.6y','basic.9y','high.school','illiterate','professional.course','university.degree','unknown') \
+5 - default: has credit in default? (categorical: 'no','yes','unknown') \
+6 - housing: has housing loan? (categorical: 'no','yes','unknown') \
+7 - loan: has personal loan? (categorical: 'no','yes','unknown') \
+
+Related with the last contact of the current campaign:\
+8 - contact: contact communication type (categorical: 'cellular','telephone') \
+9 - month: last contact month of year (categorical: 'jan', 'feb', 'mar', ..., 'nov', 'dec') \
+10 - day_of_week: last contact day of the week (categorical: 'mon','tue','wed','thu','fri') \
+11 - duration: last contact duration, in seconds (numeric). Important note: this attribute highly affects the output target (e.g., if duration=0 then y='no'). Yet, the duration is not known before a call is performed. Also, after the end of the call y is obviously known. Thus, this input should only be included for benchmark purposes and should be discarded if the intention is to have a realistic predictive model. \
+
+Other attributes: \
+12 - campaign: number of contacts performed during this campaign and for this client (numeric, includes last contact) \
+13 - pdays: number of days that passed by after the client was last contacted from a previous campaign (numeric; 999 means client was not previously contacted) \
+14 - previous: number of contacts performed before this campaign and for this client (numeric) \
+15 - poutcome: outcome of the previous marketing campaign (categorical: 'failure','nonexistent','success') \
+
+Social and economic context attributes: \
+16 - emp.var.rate: employment variation rate - quarterly indicator (numeric) \
+17 - cons.price.idx: consumer price index - monthly indicator (numeric) \
+18 - cons.conf.idx: consumer confidence index - monthly indicator (numeric) \
+19 - euribor3m: euribor 3 month rate - daily indicator (numeric) \
+20 - nr.employed: number of employees - quarterly indicator (numeric) \
+
+1.1.2 Output variable \
+
+21 - y: Whether client subscribed a term deposit? (binary: 'yes','no') \
+
+Source Link:
+http://archive.ics.uci.edu/ml/datasets/Bank+Marketing
+
+#### 1.2 Loading Dataset
+
+```{r Loading Dataset}
+df <- read.csv("BankData.csv")
+head(df)
+```
+
+#### 1.3 Reviewing Dataset
+
+```{r Size of Dataset}
+dim(df) # find the number of observations and variables of dataset
+```
+**Dataset has 4521 rows and 18 Columns**
+
+
+```{r column names}
+names(df) # Column names
+```
+**Dataset has 17 input variables and 1 output variable (y).**
+
+```{r Checking null values}
+sum(is.na(df))
+```
+**There are no missing data in our dataset.**
+
+```{r Structure of Dataset}
+str(df) # Understanding the structure of dataset
+```
+**Original dataset has 8 columns with quantitative (integer) values. Output column has categorical value.**
+
+```{r Output variable categorical review}
+CrossTable(df$y) # Checking the output variable classes.
+```
+**Output is a categorical variable of value either "yes" or "no". Current dataset has 88.5% "no" values and 11.5% "yes" values.**
+**From above cross-table, we can see that there are more outputs labelld "no" than "yes". This indicates that our dataset is imbalanced dataset.**
+
+#### 1.4 Summarizing Dataset
+
+```{r Summary of Dataset}
+summary(df)
+```
+
+## 2. Preprossing Dataset.
+
+#### 2.1 Converting quantitative (integer) values as numeric.
+
+```{r Integer to numeric conversion}
+col_num<-c(2,7,11,14,15,16,17)
+df[,col_num]<-lapply(df[,col_num],as.numeric)
+str(df)
+```
+
+#### 2.2 Normalization of numeric variables
+
+Since the numeric value ranges differ from variable to variable, these cannot be used for model training and testing without normalization.
+```{r Normalisation of dataset}
+normal=function(x)
+{
+  return((x-min(x))/(max(x)-min(x)))
+  
+}
+col_list=c(2,7,11,17,14,15,16)
+for(i in col_list)
+{
+  df[(i)]=normal(df[(i)])
+  df<-df
+}
+```
+
+#### 2.3 Splitting Dataset
+
+We split dataset in training and testing datasets using 80-20 split ratio.
+```{r Split dataset}
+set.seed(2019)
+sample<-sample.int(n=nrow(df),size=floor(.8*nrow(df)), replace=F)
+train_df<-df[sample,]
+test_df<-df[-sample,]
+CrossTable(train_df$y) 
+CrossTable(test_df$y)
+```
+**There is similar spit of "no" and "yes" labels of output variable in both testing and training dataset.**
+
+## 3. Classificaion Model Testing
+
+Following 4 models will be used and compared with for class identification: \
+`1. Linear Discriminant Analysis (LDA)` \
+`2. Classification and Regression Trees (CART).` \
+`3. k-Nearest Neighbors (kNN).` \
+`4. Support Vector Machines (SVM) with a linear kernel.` \
+
+This is a good mixture of simple linear (LDA), non-linear (CART, kNN) and complex non-linear methods (SVM). \
+we'll use `k-fold (k = 10) cross validation`.
+
+#### 3.1 Model Training (for accuracy measure)\
+```{r Model training}
+control<- trainControl(method="cv", number=10)
+metric <- "Accuracy"
+# a) linear algorithms
+set.seed(7)
+fit.lda <- train(y~., data=train_df, method="lda", metric=metric, trControl=control) #Linear Discriminant Analysis (LDA)
+
+# b) nonlinear algorithms
+set.seed(7)
+fit.cart <- train(y~., data=train_df, method="rpart", metric=metric, trControl=control) #Classification and Regression Trees (CART)
+
+set.seed(7)
+fit.knn <- train(y~., data=train_df, method="knn", metric=metric, trControl=control) #k-Nearest Neighbors (kNN)
+# c) advanced algorithms
+set.seed(7)
+fit.svm <- train(y~., data=train_df, method="svmRadial", metric=metric, trControl=control) #Support Vector Machines (SVM) with a linear kernel
+
+```
+
+#### 3.2 Comparing Model Accuracy (applicable to balanced datasets only)
+**For a balanced dataset, we can assess and compare the accuracy of each model and select the one with highest accuracy. Though our data is imbalanced, we have displayed the process below.**
+we have 4 models and accuracy estimations for each model. We need to compare the models to each other and select the most accurate. We can report the accuracy of each model by creating a list of accuracies of each model and using the summary function on this list.
+```{r Summarize accuracy of models}
+# summarize accuracy of models
+results <- resamples(list(lda=fit.lda, cart=fit.cart, knn=fit.knn, svm=fit.svm))
+summary(results)
+```
+
+We will create a plot of this summary result to evaluate the models. From plot, we can compare spread and mean accuracy of each model.
+```{r Accuracy plots}
+# compare accuracy of models
+dotplot(results)
+```
+
+**From above plot, we can conclude that, assuming our dataset is balanced, Accuracy level is quite similar of each model, However, LDA provides highest Kappa value.** \
+**In case of imbalanced dataset, we use Confusion Matrix to assess the model performance.**
+
+#### Confusion Matrix \
+The summary of a confusion Matrix represents Precision (sensitivity) and recall.
+
+##### Notes \
+Model selection based on Confustion Matrix depends on whether the need is to minimize false negatives or false positives. \
+Minimize false negative:When the actual class is True (1) but model predicts it False (0), then we try to minimize false negative. Aim is to select model which results Recall close to 100% with highest possible precision. \
+Minimising false positives: When the actual class is False (0) but model predicts it True (1), then we try to minimize false positives. Aim is to select model which results highest possible precision. \
+
+**In this analysis, our goal is to select model which has lowest false positive rate, i.e. we want to make sure that the selected model shows minimum number of certain clients who actually did not subscribe but model predicted that those clients subscribed. However, at the same time we want to make sure that True positive rate is not too low.**
+
+#### 3.3 Model Training and Testing (Imbalanced Dataset)
+Following 6 models will be used and compared with for class identification: \
+`1. Classification and Regression Trees (CART).` \
+`2. k-Nearest Neighbors (kNN).` \
+`3. Support Vector Machines (SVM) with a linear kernel.` \
+`4. Decision tree using C5.0 Algorithm (DT). ` \
+`5. Naive Bayes (NB).` \
+`6. Linear Discriminant Analysis (LDA).` \
+
+#### 3.3.1 Classification and Regression Trees (CART)
+##### Model training and testing - CART
+```{r CART}
+set.seed(120)
+model_cart<-rpart(y ~ ., train_df , method = 'class')
+cart_pred <- predict( model_cart , test_df, type = "class")
+cart_prob <- predict(model_cart , test_df , type = "prob")
+```
+
+##### Confusion Matrix - CART
+```{r CART Confusion matrix}
+confusionMatrix(cart_pred , test_df$y)
+```
+
+#### 3.3.2 k-Nearest Neighbors (kNN)
+##### Model training and testing - kNN
+```{r KNN}
+set.seed(120)
+model_knn <- train(y ~ ., data = train_df, method = "knn", 
+                  maximize = TRUE,
+                  trControl = trainControl(method = "cv", number = 10),
+                  preProcess=c("center", "scale"))
+
+predictedkNN <- predict(model_knn , newdata = test_df)
+
+```
+
+##### Confusion Matrix - kNN
+```{r KNN Confusion Matrix}
+confusionMatrix(predictedkNN , test_df$y)
+```
+
+
+#### 3.3.3 Support Vector Machines (SVM) with a linear kernel
+##### Model training and testing - SVM
+```{r SVM}
+set.seed(120)
+svm_model <- train(y~., data = train_df,
+                   method = "svmPoly",
+                   trControl= trainControl(method = "cv", number = 10),
+                   tuneGrid = data.frame(degree = 1,scale = 1,C = 1))
+SVMPredictions <-predict(svm_model, test_df, na.action = na.pass)
+```
+
+##### Confusion Matrix - SVM
+```{r SVM Confusion Matrix}
+confusionMatrix(SVMPredictions, test_df$y)
+```
+
+#### 3.3.4 Decision tree using C5.0 Algorithm (DT))
+##### Model training and testing - DT
+```{r Decision Tree}
+options(warn=-1)
+set.seed(120)
+dectree_c5 <- train(y ~ ., data = train_df, 
+                      method = "C5.0",
+                      trControl= control,
+                      na.action = na.omit)
+dectree_c5_pred <-predict(dectree_c5, test_df, na.action = na.pass)
+```
+
+##### Confusion Matrix - DT
+```{r Decision Tree Confusion Matrix}
+confusionMatrix(dectree_c5_pred, test_df$y)
+```
+
+
+#### 3.3.5 Naive Bayes (NB)
+##### Model training and testing - NB
+```{r Naive Bayes}
+set.seed(100)
+NBModel <- train(train_df[,-18], train_df$y, method = "nb",trControl= trainControl(method = "cv", number = 10, repeats = 5))
+NBPredictions <-predict(NBModel, test_df)
+```
+
+##### Confusion Matrix - NB
+```{r Naive Bayes Confusion Matrix}
+confusionMatrix(NBPredictions, test_df$y)
+```
+
+#### 3.3.6 Linear Discriminant Analysis (LDA)
+##### Model training and testing - LDA
+``` {r LDA}
+lda_fit <- lda(train_df$y~.,data = train_df)
+lda_pred <- predict(lda_fit,test_df)
+lda.class <- lda_pred$class
+```
+
+##### Confusion Matrix - LDA
+``` {r LDA Confusion Matrix Table}
+table(lda.class,test_df$y)
+```
+
+
+
+## 4. Conclusion
+``` {r conclusion}
+Model <- c("CART","KNN","SVM","Decision Tree","Naive Bayes","LDA")
+FP <- c(26,18,4,13,33,31)
+FN <- c(80,101,119,89,87,78)
+TP <- c(41,20,2,32,34,43)
+TN <- c(758,766,780,771,751,753)
+Sensitivity = TP / (TP + FN)
+Specificity = TN / (TN + FP)
+Precision = TP / (TP + FP)
+FPR <- 1- (TN/(TN+FP)) #1-specificity
+Accuracy <- (TP + TN) / (TP + TN + FP + FN)
+F1 = 2 * (Precision * Sensitivity) / (Precision + Sensitivity)
+Eval_Table <- data.frame(Model,TN,FP,FN,TP,Sensitivity,Specificity,Precision,FPR, Accuracy,F1)
+Eval_Table
+```
+**The lowest possible false positive rate is predicted by Support Vector Machine (SVM) model. However, the Precision is very low in case of SVM. F1 Score, which is another important measure to assess the model, is high for Linear Discriminant Analysis (LDA). Hence, we'll select `Linear Discriminant Analysis (LDA)` model for future predictions for  Term deposit subscriptions.**
+**Notes: F1 score summarizes both precision and recall.An F1 score of 1 indicates perfect precision and recall, therefore the higher the F1 score, the better the model.**
